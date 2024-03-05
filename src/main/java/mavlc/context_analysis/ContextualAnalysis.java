@@ -25,40 +25,43 @@ import mavlc.syntax.type.*;
 import mavlc.type.*;
 
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
 /* TODO enter group information
  *
- * EiCB group number: ...
+ * EiCB group number: 57
  * Names and matriculation numbers of all group members:
- * ...
+ * Stefan Nikolaus Dobrea MatrNr. : 2802837
+ * Franck Boudouin Tameze MatrNr. : 2682002
+ * Narges Ahmadi Asl MatNr. : 2732428
  */
 
 /** A combined identification and type checking visitor. */
 public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
-	
+
 	protected final ModuleEnvironment env;
-	
+
 	protected final IdentificationTable table;
-	
+
 	protected Function currentFunction;
-	
+
 	/** @param moduleEnvironment an identification table containing the module's functions. */
 	public ContextualAnalysis(ModuleEnvironment moduleEnvironment) {
 		env = moduleEnvironment;
 		table = new IdentificationTable();
 	}
-	
+
 	private void checkType(AstNode node, Type t1, Type t2) {
 		if(!t1.equals(t2)) throw new TypeError(node, t1, t2);
 	}
-	
+
 	private int evalConstExpr(Expression expr) {
 		expr.setType(expr.accept(this));
 		return expr.accept(new ConstantExpressionEvaluator(), null);
 	}
-	
+
 	@Override
 	public Type visitTypeSpecifier(TypeSpecifier typeSpecifier, Void __) {
 		// no need to set the type for simple type specifiers
@@ -69,14 +72,14 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		if(typeSpecifier instanceof StringTypeSpecifier) return StringType.instance;
 		throw new InternalCompilerError("visitTypeSpecifier should only be called for simple types");
 	}
-	
+
 	@Override
 	public Type visitRecordTypeSpecifier(RecordTypeSpecifier recordTypeSpecifier, Void __) {
 		RecordType type = new RecordType(recordTypeSpecifier.recordTypeName, env.getRecordTypeDeclaration(recordTypeSpecifier.recordTypeName));
 		recordTypeSpecifier.setType(type);
 		return type;
 	}
-	
+
 	@Override
 	public Type visitVectorTypeSpecifier(VectorTypeSpecifier vectorTypeSpecifier, Void __) {
 		Type elementType = vectorTypeSpecifier.elementTypeSpecifier.accept(this);
@@ -86,12 +89,12 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		int dim = evalConstExpr(vectorTypeSpecifier.dimensionExpression);
 		if(dim <= 0)
 			throw new StructureDimensionError(vectorTypeSpecifier, "Vector dimension must be strictly positive");
-		
+
 		VectorType type = new VectorType((NumericType) elementType, dim);
 		vectorTypeSpecifier.setType(type);
 		return type;
 	}
-	
+
 	@Override
 	public Type visitMatrixTypeSpecifier(MatrixTypeSpecifier matrixTypeSpecifier, Void __) {
 		Type elementType = matrixTypeSpecifier.elementTypeSpecifier.accept(this);
@@ -102,12 +105,12 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		int cols = evalConstExpr(matrixTypeSpecifier.colsExpression);
 		if(rows <= 0 || cols <= 0)
 			throw new StructureDimensionError(matrixTypeSpecifier, "Matrix dimensions must be strictly positive");
-		
+
 		MatrixType type = new MatrixType((NumericType) elementType, rows, cols);
 		matrixTypeSpecifier.setType(type);
 		return type;
 	}
-	
+
 	@Override
 	public Type visitModule(Module module, Void __) {
 		boolean hasMain = false;
@@ -126,33 +129,33 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		if(!hasMain) {
 			throw new MissingMainFunctionError();
 		}
-		
+
 		return null;
 	}
-	
+
 	private boolean isMainFunction(Function func) {
 		// signature of the main method must be "void main()"
 		return func.name.equals("main")
 				&& func.parameters.isEmpty()
 				&& func.getReturnType() == VoidType.instance;
 	}
-	
+
 	@Override
 	public Type visitFunction(Function function, Void __) {
 		table.openNewScope();
-		
+
 		if(!function.isReturnTypeSet()) {
 			function.setReturnType(function.returnTypeSpecifier.accept(this));
 		}
-		
+
 		for(FormalParameter param : function.parameters) {
 			param.accept(this);
 		}
-		
+
 		if(function.body.isEmpty() && function.getReturnType().isValueType()) {
 			throw new MissingReturnError(function);
 		}
-		
+
 		for(int i = 0; i < function.body.size(); i++) {
 			Statement statement = function.body.get(i);
 			if(i == function.body.size() - 1 && function.getReturnType().isValueType()) {
@@ -168,11 +171,11 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 				statement.accept(this);
 			}
 		}
-		
+
 		table.closeCurrentScope();
 		return null;
 	}
-	
+
 	@Override
 	public Type visitRecordTypeDeclaration(RecordTypeDeclaration recordTypeDeclaration, Void __) {
 		Set<String> elementNames = new HashSet<>();
@@ -187,21 +190,21 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		}
 		return new RecordType(recordTypeDeclaration.name, recordTypeDeclaration);
 	}
-	
+
 	@Override
 	public Type visitRecordElementDeclaration(RecordElementDeclaration recordElementDeclaration, Void __) {
 		Type type = recordElementDeclaration.typeSpecifier.accept(this);
 		recordElementDeclaration.setType(type);
 		return type;
 	}
-	
+
 	@Override
 	public Type visitDeclaration(Declaration declaration, Void __) {
 		declaration.setType(declaration.typeSpecifier.accept(this));
 		table.addIdentifier(declaration.name, declaration);
 		return declaration.getType();
 	}
-	
+
 	@Override
 	public Type visitValueDefinition(ValueDefinition valueDefinition, Void __) {
 		Type rhs = valueDefinition.value.accept(this);
@@ -210,43 +213,124 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		checkType(valueDefinition, lhs, rhs);
 		return null;
 	}
-	
+
 	@Override
 	public Type visitVariableAssignment(VariableAssignment variableAssignment, Void __) {
-		// TODO implement (task 2.2)
-		throw new UnsupportedOperationException();
+		// DONE implement (task 2.2)
+		Type rightValue = variableAssignment.value.accept(this);
+		Type lhs = variableAssignment.identifier.accept(this);
+		checkType(variableAssignment, lhs, rightValue);
+		return null;
 	}
-	
+
 	@Override
 	public Type visitLeftHandIdentifier(LeftHandIdentifier leftHandIdentifier, Void __) {
-		// TODO implement (task 2.2)
-		throw new UnsupportedOperationException();
+		// DONE implement (task 2.2)
+		Declaration declaration = table.getDeclaration(leftHandIdentifier.name);
+		if(!declaration.isVariable()){
+			throw new ConstantAssignmentError(leftHandIdentifier, declaration);
+		}
+		leftHandIdentifier.setDeclaration(declaration);
+		return declaration.getType();
 	}
-	
+
 	@Override
 	public Type visitMatrixLhsIdentifier(MatrixLhsIdentifier matrixLhsIdentifier, Void __) {
-		// TODO implement (task 2.2)
-		throw new UnsupportedOperationException();
+		// DONE implement (task 2.2)
+		Declaration declaration = table.getDeclaration(matrixLhsIdentifier.name);
+		if(!declaration.isVariable()){
+			throw new ConstantAssignmentError(matrixLhsIdentifier, declaration);
+		}
+		matrixLhsIdentifier.setDeclaration(declaration);
+		if(!(declaration.getType() instanceof MatrixType)){
+			throw new InapplicableOperationError(declaration, declaration.getType(), MatrixType.class);
+		}
+		Type indexTypeRow = matrixLhsIdentifier.rowIndexExpression.accept(this);
+		checkType(matrixLhsIdentifier, indexTypeRow, IntType.instance);
+		Type indexTypeCol = matrixLhsIdentifier.colIndexExpression.accept(this);
+		checkType(matrixLhsIdentifier, indexTypeCol, IntType.instance);
+		return ((MatrixType) declaration.getType()).elementType;
+
 	}
-	
+
 	@Override
 	public Type visitVectorLhsIdentifier(VectorLhsIdentifier vectorLhsIdentifier, Void __) {
-		// TODO implement (task 2.2)
-		throw new UnsupportedOperationException();
+		// DONE implement (task 2.2)
+		Declaration declaration = table.getDeclaration(vectorLhsIdentifier.name);
+		if(!declaration.isVariable()){
+			throw new ConstantAssignmentError(vectorLhsIdentifier, declaration);
+		}
+		vectorLhsIdentifier.setDeclaration(declaration);
+		if(!(declaration.getType() instanceof VectorType)){
+			throw new InapplicableOperationError(declaration, declaration.getType(),VectorType.class);
+		}
+		Type indexExpression = vectorLhsIdentifier.indexExpression.accept(this);
+		checkType(vectorLhsIdentifier, indexExpression, IntType.instance);
+		return ((VectorType) declaration.getType() ).elementType;
 	}
-	
+
 	@Override
 	public Type visitRecordLhsIdentifier(RecordLhsIdentifier recordLhsIdentifier, Void __) {
-		// TODO implement (task 2.2)
-		throw new UnsupportedOperationException();
+		// DONE implement (task 2.2)
+		Declaration declaration = table.getDeclaration(recordLhsIdentifier.name);
+		if(!declaration.isVariable()){
+			throw new ConstantAssignmentError(recordLhsIdentifier, declaration);
+		}
+		recordLhsIdentifier.setDeclaration(declaration);
+		if(!(declaration.getType() instanceof RecordType)){
+			throw new InapplicableOperationError(declaration, declaration.getType(),RecordType.class);
+		}
+
+		String elementName = recordLhsIdentifier.elementName;
+		RecordElementDeclaration element = (((RecordType) declaration.getType()).typeDeclaration.getElement(elementName));
+		if(element == null) {
+			throw new RecordElementError(recordLhsIdentifier, ((RecordType) declaration.getType()).name, elementName);
+		}
+		if(!element.isVariable()) {
+			throw new ConstantAssignmentError(recordLhsIdentifier, element);
+		}
+		return element.getType();
+
+
 	}
-	
+
 	@Override
 	public Type visitForLoop(ForLoop forLoop, Void __) {
+
 		// TODO implement (task 2.5)
-		throw new UnsupportedOperationException();
+		// check for equal type on both sides of the initializer
+		Declaration initVarDecl = table.getDeclaration(forLoop.initVarName);
+		if(!initVarDecl.isVariable()) {
+			throw new ConstantAssignmentError(forLoop, initVarDecl);
+		}
+
+		forLoop.setInitVarDeclaration(initVarDecl);
+		Type initVarType = initVarDecl.getType();
+		Type initValType = forLoop.initExpression.accept(this);
+		checkType(forLoop, initVarType, initValType);
+
+		// check that the loop condition has type boolean
+		Type testType = forLoop.loopCondition.accept(this);
+		checkType(forLoop, testType, BoolType.instance);
+
+		// check for equal type on both sides of the increment
+		Declaration incrVarDecl = table.getDeclaration(forLoop.incrVarName);
+		if(!incrVarDecl.isVariable()) {
+			throw new ConstantAssignmentError(forLoop, incrVarDecl);
+		}
+
+		forLoop.setIncrVarDeclaration(incrVarDecl);
+		Type incrVarType = incrVarDecl.getType();
+		Type incrValType = forLoop.incrExpression.accept(this);
+		checkType(forLoop, incrVarType, incrValType);
+
+		// process loop body
+		table.openNewScope();
+		forLoop.body.accept(this);
+		table.closeCurrentScope();
+		return null;
 	}
-	
+
 	@Override
 	public Type visitForEachLoop(ForEachLoop forEachLoop, Void __) {
 		// check for equal type on both sides of the initializer
@@ -254,7 +338,7 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		table.openNewScope();
 		// iterator needs to be in an extra scope
 		iterator.accept(this);
-		
+
 		// check for correct type on both sides of the colon
 		Expression struct = forEachLoop.structExpression;
 		Type structType = struct.accept(this);
@@ -267,13 +351,13 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 				throw new ConstantAssignmentError(forEachLoop, ((IdentifierReference) struct).getDeclaration());
 			}
 		}
-		
+
 		if(structType instanceof StructType) {
 			checkType(forEachLoop, ((StructType) structType).elementType, iterator.getType());
 		} else {
 			throw new InapplicableOperationError(forEachLoop, structType, MatrixType.class, VectorType.class);
 		}
-		
+
 		// process loop body
 		table.openNewScope();
 		forEachLoop.body.accept(this);
@@ -281,16 +365,16 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		table.closeCurrentScope();
 		return null;
 	}
-	
+
 	@Override
 	public Type visitIfStatement(IfStatement ifStatement, Void __) {
 		Type testType = ifStatement.condition.accept(this);
 		checkType(ifStatement, testType, BoolType.instance);
-		
+
 		table.openNewScope();
 		ifStatement.thenStatement.accept(this);
 		table.closeCurrentScope();
-		
+
 		if(ifStatement.hasElseStatement()) {
 			assert ifStatement.elseStatement != null;
 			table.openNewScope();
@@ -299,33 +383,37 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		}
 		return null;
 	}
-	
+
 	@Override
 	public Type visitCallStatement(CallStatement callStatement, Void __) {
-		// TODO implement (task 2.6)
-		throw new UnsupportedOperationException();
+		// DONE implement (task 2.6)
+		callStatement.callExpression.accept(this);
+		return null;
 	}
-	
+
 	@Override
 	public Type visitReturnStatement(ReturnStatement returnStatement, Void __) {
 		throw new MisplacedReturnError(returnStatement);
 	}
-	
+
 	@Override
 	public Type visitCompoundStatement(CompoundStatement compoundStatement, Void __) {
-		// TODO implement (task 2.1)
-		throw new UnsupportedOperationException();
+		// Done implement (task 2.1)
+		table.openNewScope();
+        for (Statement statement : compoundStatement.statements) statement.accept(this);
+		table.closeCurrentScope();
+		return null;
 	}
-	
+
 	@Override
 	public Type visitSwitchStatement(SwitchStatement switchStatement, Void __) {
 		Type testType = switchStatement.condition.accept(this);
 		checkType(switchStatement, testType, IntType.instance);
-		
+
 		for(Case theCase : switchStatement.cases) {
 			theCase.setCondition(evalConstExpr(theCase.conditionExpression));
 		}
-		
+
 		List<Case> lSC = switchStatement.cases;
 		for(int i = 0; i < lSC.size() - 1; i++) {
 			for(int j = i + 1; j < lSC.size(); j++) {
@@ -334,75 +422,95 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 				}
 			}
 		}
-		
+
 		List<Default> defaults = switchStatement.defaults;
-		
+
 		if(defaults.size() > 1) {
 			throw new DuplicateCaseError(switchStatement, true, defaults.get(0), defaults.get(1));
 		}
-		
+
 		for(SwitchSection curCase : switchStatement.cases) {
 			table.openNewScope();
 			curCase.accept(this);
 			table.closeCurrentScope();
 		}
-		
+
 		if(defaults.size() == 1) {
 			table.openNewScope();
 			switchStatement.defaults.get(0).accept(this);
 			table.closeCurrentScope();
 		}
-		
+
 		return null;
 	}
-	
+
 	@Override
 	public Type visitSwitchSection(SwitchSection switchSection, Void __) {
 		switchSection.body.accept(this);
 		return null;
 	}
-	
+
 	@Override
 	public Type visitMatrixMultiplication(MatrixMultiplication matrixMultiplication, Void __) {
-		// TODO implement (task 2.4)
-		throw new UnsupportedOperationException();
+		// DONE implement (task 2.4)
+		Type leftOperandType = matrixMultiplication.leftOperand.accept(this);
+		Type rightOperandType = matrixMultiplication.rightOperand.accept(this);
+
+		if(!(leftOperandType instanceof MatrixType))
+			throw new InapplicableOperationError(matrixMultiplication, leftOperandType, MatrixType.class);
+		if(!(rightOperandType instanceof MatrixType))
+			throw new InapplicableOperationError(matrixMultiplication, rightOperandType, MatrixType.class);
+
+		MatrixType leftMat = (MatrixType) leftOperandType;
+		MatrixType rightMat = (MatrixType) rightOperandType;
+
+		// make sure element types match
+		checkType(matrixMultiplication, leftMat.elementType, rightMat.elementType);
+		NumericType eType = leftMat.elementType;
+
+		// make sure dimensions are compatible
+		if(leftMat.cols != rightMat.rows) throw new StructureDimensionError(matrixMultiplication, leftMat.cols, rightMat.rows);
+
+		MatrixType resultType = new MatrixType(eType, leftMat.rows, rightMat.cols);
+		matrixMultiplication.setType(resultType);
+		return resultType;
 	}
-	
+
 	@Override
 	public Type visitDotProduct(DotProduct dotProduct, Void __) {
 		Type leftOp = dotProduct.leftOperand.accept(this);
 		Type rightOp = dotProduct.rightOperand.accept(this);
-		
+
 		if(!(leftOp instanceof VectorType))
 			throw new InapplicableOperationError(dotProduct, leftOp, VectorType.class);
 		if(!(rightOp instanceof VectorType))
 			throw new InapplicableOperationError(dotProduct, rightOp, VectorType.class);
-		
+
 		VectorType lVec = (VectorType) leftOp;
 		VectorType rVec = (VectorType) rightOp;
-		
+
 		// make sure element types match
 		checkType(dotProduct, lVec.elementType, rVec.elementType);
 		NumericType eType = lVec.elementType;
-		
+
 		// make sure dimensions are compatible
 		if(lVec.dimension != rVec.dimension)
 			throw new StructureDimensionError(dotProduct, lVec.dimension, rVec.dimension);
-		
+
 		dotProduct.setType(eType);
 		return eType;
 	}
-	
+
 	private Type visitArithmeticOperator(BinaryExpression node, boolean allowLeftStruct, boolean allowRightStruct, boolean allowBothStruct) {
 		Type lType = node.leftOperand.accept(this);
 		Type rType = node.rightOperand.accept(this);
-		
+
 		if(lType.isNumericType() && rType.isNumericType()) {
 			checkType(node, lType, rType);
 			node.setType(lType);
 			return lType;
 		}
-		
+
 		if(lType.isStructType() && rType.isNumericType()) {
 			if(!allowLeftStruct)
 				throw new InapplicableOperationError(node, lType, IntType.class, FloatType.class);
@@ -410,7 +518,7 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 			node.setType(lType);
 			return lType;
 		}
-		
+
 		if(lType.isNumericType() && rType.isStructType()) {
 			if(!allowRightStruct)
 				throw new InapplicableOperationError(node, lType, IntType.class, FloatType.class);
@@ -418,7 +526,7 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 			node.setType(rType);
 			return rType;
 		}
-		
+
 		if(lType.isStructType() && rType.isStructType()) {
 			if(!allowBothStruct)
 				throw new InapplicableOperationError(node, allowLeftStruct ? rType : lType, IntType.class, FloatType.class);
@@ -426,7 +534,7 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 			node.setType(lType);
 			return lType;
 		}
-		
+
 		// if we got here, at least one operand is neither a number nor a structure
 		if(!lType.isNumericType() && !lType.isStructType()) {
 			//noinspection unchecked
@@ -440,67 +548,84 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 					: new Class[]{IntType.class, FloatType.class});
 		}
 	}
-	
+
 	@Override
 	public Type visitAddition(Addition addition, Void __) {
 		return visitArithmeticOperator(addition, false, false, true);
 	}
-	
+
 	@Override
 	public Type visitSubtraction(Subtraction subtraction, Void __) {
 		return visitArithmeticOperator(subtraction, false, false, true);
 	}
-	
+
 	@Override
 	public Type visitMultiplication(Multiplication multiplication, Void __) {
 		return visitArithmeticOperator(multiplication, true, true, true);
 	}
-	
+
 	@Override
 	public Type visitDivision(Division division, Void __) {
 		return visitArithmeticOperator(division, false, false, false);
 	}
-	
+
 	@Override
 	public Type visitExponentiation(Exponentiation exponentiation, Void __) {
 		return visitArithmeticOperator(exponentiation, false, false, false);
 	}
-	
+
 	@Override
 	public Type visitCompare(Compare compare, Void __) {
-		// TODO implement (task 2.4)
-		throw new UnsupportedOperationException();
+		// DONE implement (task 2.4)
+		Type leftType = compare.leftOperand.accept(this);
+		Type rightType = compare.rightOperand.accept(this);
+
+		if(!leftType.isNumericType())
+			throw new InapplicableOperationError(compare, leftType, IntType.class, FloatType.class);
+		if(!rightType.isNumericType())
+			throw new InapplicableOperationError(compare, rightType, IntType.class, FloatType.class);
+
+		checkType(compare, leftType, rightType);
+		compare.setType(BoolType.instance);
+		return BoolType.instance;
+
 	}
-	
+
 	@Override
 	public Type visitAnd(And and, Void __) {
 		return visitBooleanExpression(and);
 	}
-	
+
 	@Override
 	public Type visitOr(Or or, Void __) {
 		return visitBooleanExpression(or);
 	}
-	
+
 	private Type visitBooleanExpression(BinaryExpression exp) {
 		Type leftOp = exp.leftOperand.accept(this);
 		Type rightOp = exp.rightOperand.accept(this);
-		
+
 		if(!(leftOp instanceof BoolType))
 			throw new InapplicableOperationError(exp, leftOp, BoolType.class);
 		if(!(rightOp instanceof BoolType))
 			throw new InapplicableOperationError(exp, rightOp, BoolType.class);
-		
+
 		exp.setType(BoolType.instance);
 		return BoolType.instance;
 	}
-	
+
 	@Override
 	public Type visitMatrixTranspose(MatrixTranspose matrixTranspose, Void __) {
-		// TODO implement (task 2.4)
-		throw new UnsupportedOperationException();
+		// DONE implement (task 2.4)
+		Type opType = matrixTranspose.operand.accept(this);
+		if(!(opType instanceof MatrixType))
+			throw new InapplicableOperationError(matrixTranspose, opType, MatrixType.class);
+		MatrixType matType = (MatrixType) opType;
+		MatrixType resType = new MatrixType(matType.elementType, matType.cols, matType.rows);
+		matrixTranspose.setType(resType);
+		return resType;
 	}
-	
+
 	@Override
 	public Type visitMatrixRows(MatrixRows rows, Void __) {
 		Type opType = rows.operand.accept(this);
@@ -509,7 +634,7 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		rows.setType(IntType.instance);
 		return IntType.instance;
 	}
-	
+
 	@Override
 	public Type visitMatrixCols(MatrixCols cols, Void __) {
 		Type opType = cols.operand.accept(this);
@@ -518,7 +643,7 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		cols.setType(IntType.instance);
 		return IntType.instance;
 	}
-	
+
 	@Override
 	public Type visitVectorDimension(VectorDimension vectorDimension, Void __) {
 		Type opType = vectorDimension.operand.accept(this);
@@ -527,7 +652,7 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		vectorDimension.setType(IntType.instance);
 		return IntType.instance;
 	}
-	
+
 	@Override
 	public Type visitUnaryMinus(UnaryMinus unaryMinus, Void __) {
 		Type opType = unaryMinus.operand.accept(this);
@@ -536,7 +661,7 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		unaryMinus.setType(opType);
 		return opType;
 	}
-	
+
 	@Override
 	public Type visitNot(Not not, Void __) {
 		Type opType = not.operand.accept(this);
@@ -544,23 +669,53 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		not.setType(BoolType.instance);
 		return BoolType.instance;
 	}
-	
+
 	@Override
 	public Type visitCallExpression(CallExpression callExpression, Void __) {
-		// TODO implement (task 2.6)
-		throw new UnsupportedOperationException();
+		// DONE implement (task 2.6)
+		Function declaration = env.getFunctionDeclaration(callExpression.functionName);
+
+		List<FormalParameter> declarationParameters = declaration.parameters;
+		List<Expression> realParameters = callExpression.actualParameters;
+
+		if(declarationParameters.size() != realParameters.size()){
+			throw new ArgumentCountError(callExpression, declaration, declarationParameters.size(), realParameters.size());
+		}
+
+		for(int i = 0; i< declarationParameters.size(); i++){
+
+			FormalParameter declParameter = declarationParameters.get(i);
+
+			if(!declParameter.isTypeSet()) {
+				declParameter.setType(declParameter.typeSpecifier.accept(this));
+			}
+
+			Type declP = declarationParameters.get(i).getType();
+			Type realP = realParameters.get(i).accept(this);
+
+			checkType(callExpression, declP, realP);
+		}
+
+		if(!declaration.isReturnTypeSet()) {
+			declaration.setReturnType(declaration.returnTypeSpecifier.accept(this));
+		}
+
+		callExpression.setCalleeDefinition(declaration);
+		callExpression.setType(declaration.getReturnType());
+		return declaration.getReturnType();
+
 	}
-	
+
 	@Override
 	public Type visitElementSelect(ElementSelect elementSelect, Void __) {
 		Type baseType = elementSelect.structExpression.accept(this);
 		if(!(baseType instanceof StructType))
 			throw new InapplicableOperationError(elementSelect, baseType, MatrixType.class, VectorType.class);
-		
+
 		Type indexType = elementSelect.indexExpression.accept(this);
 		if(!indexType.equals(IntType.instance))
 			throw new TypeError(elementSelect, indexType, IntType.instance);
-		
+
 		if(baseType instanceof VectorType) {
 			Type resultType = ((VectorType) baseType).elementType;
 			elementSelect.setType(resultType);
@@ -574,7 +729,7 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		}
 		return null;
 	}
-	
+
 	@Override
 	public Type visitRecordElementSelect(RecordElementSelect recordElementSelect, Void __) {
 		Type baseType = recordElementSelect.recordExpression.accept(this);
@@ -590,7 +745,7 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		recordElementSelect.setType(element.getType());
 		return element.getType();
 	}
-	
+
 	@Override
 	public Type visitSubMatrix(SubMatrix subMatrix, Void __) {
 		int rso = evalConstExpr(subMatrix.rowStartOffsetExpression);
@@ -599,41 +754,41 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		int ceo = evalConstExpr(subMatrix.colEndOffsetExpression);
 		int rows = reo - rso + 1;
 		int cols = ceo - cso + 1;
-		
+
 		subMatrix.setRowStartOffset(rso);
 		subMatrix.setRowEndOffset(reo);
 		subMatrix.setColStartOffset(cso);
 		subMatrix.setColEndOffset(ceo);
-		
+
 		Type rowBaseType = subMatrix.rowBaseIndexExpression.accept(this);
 		checkType(subMatrix, rowBaseType, IntType.instance);
 		Type colBaseType = subMatrix.colBaseIndexExpression.accept(this);
 		checkType(subMatrix, colBaseType, IntType.instance);
-		
+
 		Type baseType = subMatrix.structExpression.accept(this);
 		if(!(baseType instanceof MatrixType))
 			throw new InapplicableOperationError(subMatrix, baseType, MatrixType.class);
 		MatrixType matrix = (MatrixType) baseType;
-		
+
 		if(reo < rso) throw new StructureDimensionError(subMatrix, reo, rso);
 		if(ceo < cso) throw new StructureDimensionError(subMatrix, ceo, cso);
 		if(matrix.rows < rows) throw new StructureDimensionError(subMatrix, matrix.rows, rows);
 		if(matrix.cols < cols) throw new StructureDimensionError(subMatrix, matrix.cols, cols);
-		
+
 		Type resultType = new MatrixType(((MatrixType) baseType).elementType, rows, cols);
 		subMatrix.setType(resultType);
 		return resultType;
 	}
-	
+
 	@Override
 	public Type visitSubVector(SubVector subVector, Void __) {
 		int so = evalConstExpr(subVector.startOffsetExpression);
 		int eo = evalConstExpr(subVector.endOffsetExpression);
 		int size = eo - so + 1;
-		
+
 		subVector.setStartOffset(so);
 		subVector.setEndOffset(eo);
-		
+
 		Type indexType = subVector.baseIndexExpression.accept(this);
 		checkType(subVector, indexType, IntType.instance);
 		Type baseType = subVector.structExpression.accept(this);
@@ -647,12 +802,12 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		if(vector.dimension < size) {
 			throw new StructureDimensionError(subVector, vector.dimension, size);
 		}
-		
+
 		Type resultType = new VectorType(((VectorType) baseType).elementType, size);
 		subVector.setType(resultType);
 		return resultType;
 	}
-	
+
 	@Override
 	public Type visitStructureInit(StructureInit structureInit, Void __) {
 		// The type of the first element determines the structure
@@ -687,33 +842,43 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 			return resultType;
 		}
 	}
-	
+
 	@Override
 	public Type visitRecordInit(RecordInit recordInit, Void __) {
-		// TODO implement (task 2.4)
-		throw new UnsupportedOperationException();
+		// DONE implement (task 2.4)
+		RecordTypeDeclaration declaration = env.getRecordTypeDeclaration(recordInit.typeName);
+		recordInit.setType(declaration.accept(this));
+		if(recordInit.elements.size() != declaration.elements.size()) {
+			throw new StructureDimensionError(recordInit, recordInit.elements.size(), declaration.elements.size());
+		}
+		for(int i = 0; i<recordInit.elements.size(); i++){
+			Type elementType = recordInit.elements.get(i).accept(this);
+			Type declarationTpe = declaration.elements.get(i).accept(this);
+			checkType(recordInit, elementType, declarationTpe);
+		}
+		return recordInit.getType();
 	}
-	
+
 	@Override
 	public Type visitStringValue(StringValue stringValue, Void __) {
 		return StringType.instance;
 	}
-	
+
 	@Override
 	public Type visitBoolValue(BoolValue boolValue, Void __) {
 		return BoolType.instance;
 	}
-	
+
 	@Override
 	public Type visitIntValue(IntValue intValue, Void __) {
 		return IntType.instance;
 	}
-	
+
 	@Override
 	public Type visitFloatValue(FloatValue floatValue, Void __) {
 		return FloatType.instance;
 	}
-	
+
 	@Override
 	public Type visitIdentifierReference(IdentifierReference identifierReference, Void __) {
 		Declaration decl = table.getDeclaration(identifierReference.name);
@@ -721,12 +886,12 @@ public class ContextualAnalysis extends AstNodeBaseVisitor<Type, Void> {
 		identifierReference.setType(decl.getType());
 		return decl.getType();
 	}
-	
+
 	@Override
 	public Type visitSelectExpression(SelectExpression exp, Void __) {
 		Type testType = exp.condition.accept(this);
 		checkType(exp, testType, BoolType.instance);
-		
+
 		Type trueType = exp.trueCase.accept(this);
 		Type falseType = exp.falseCase.accept(this);
 		checkType(exp, trueType, falseType);

@@ -15,15 +15,19 @@ import mavlc.syntax.statement.Declaration;
 
 /* TODO enter group information
  *
- * EiCB group number: ...
+ * EiCB group number: 57
  * Names and matriculation numbers of all group members:
- * ...
+ * Stefan Nikolaus Dobrea MatrNr. : 2802837
+ * Franck Boudouin Tameze MatrNr. : 2682002
+ * Narges Ahmadi Asl MatNr. : 2732428
  */
 
 /**
  * A table for identifiers used inside a function.
  */
 public class IdentificationTable {
+
+	private Scope currentScope = new Scope(null);
 	
 	/**
 	 * Declares the given identifier in the current scope.
@@ -33,7 +37,7 @@ public class IdentificationTable {
 	 */
 	public void addIdentifier(String name, Declaration declaration) {
 		// TODO implement (task 2.1)
-		throw new UnsupportedOperationException();
+		currentScope.addIdentifier(name, declaration);
 	}
 	
 	/**
@@ -44,7 +48,7 @@ public class IdentificationTable {
 	 */
 	public Declaration getDeclaration(String name) {
 		// TODO implement (task 2.1)
-		throw new UnsupportedOperationException();
+		return currentScope.getDeclaration(name);
 	}
 	
 	/**
@@ -52,7 +56,7 @@ public class IdentificationTable {
 	 */
 	public void openNewScope() {
 		// TODO implement (task 2.1)
-		throw new UnsupportedOperationException();
+		currentScope = new Scope(currentScope);
 	}
 	
 	/**
@@ -60,6 +64,6 @@ public class IdentificationTable {
 	 */
 	public void closeCurrentScope() {
 		// TODO implement (task 2.1)
-		throw new UnsupportedOperationException();
+		currentScope = currentScope.parentScope;
 	}
 }
